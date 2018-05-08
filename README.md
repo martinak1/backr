@@ -4,6 +4,7 @@
     $ backr [OPTIONS] --destination DESTINATION_PATH
 
 <h2>FLAGS:</h2>
+
        -h, --help 
              Prints help information 
 

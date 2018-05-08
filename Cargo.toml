@@ -8,6 +8,8 @@ readme = "README.md"
 keywords = ["backup-utility", "regex", "clap"]
 categories = ["command-line-utility", "filesystem"]
 license = "BSD-3-Clause"
+
+[badges]
 travis-ci = "martinak1/backr"
 
 
