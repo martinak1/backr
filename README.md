@@ -1,7 +1,9 @@
  <h1>Backr - Backs up user data.</h1>
 
  <h2>USAGE:</h2>
-    <p>backr [OPTIONS] --destination <DESTINATION_PATH></p>
+    <p>
+    backr [OPTIONS] --destination <DESTINATION_PATH>
+    </p>
 
 <h2>FLAGS:</h2>
     <p>-h, --help
