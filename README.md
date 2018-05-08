@@ -1,5 +1,5 @@
  <h1>Backr - Backs up user data.</h1>
-[![Github file size](https://img.shields.io/github/size/webcaetano/craft/build/phaser-craft.min.js.svg)](https://github.com/martinak1/backr)[![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr)[![Crates.io](https://img.shields.io/crates/v/rustc-serialize.svg)](https://crates.io/crates/backr)
+[![Github file size](https://img.shields.io/github/size/webcaetano/craft/build/phaser-craft.min.js.svg)](https://github.com/martinak1/backr) [![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr) [![Crates.io](https://img.shields.io/crates/v/rustc-serialize.svg)](https://crates.io/crates/backr)
  
 
  <h2>USAGE:</h2>
