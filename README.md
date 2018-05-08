@@ -1,12 +1,15 @@
- <h1>Backr - Backs up user data.</h1>
+ Backr - Backs up user data.
+ ===
 [![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr)
 
 
- <h2>USAGE:</h2>
+ USAGE:
+ ===
 
     $ backr [OPTIONS] --destination DESTINATION_PATH
 
-<h2>FLAGS:</h2>
+FLAGS:
+===
 
        -h, --help 
              Prints help information 
@@ -15,8 +18,8 @@
              Prints version information
 
 
- <h2>OPTIONS:</h2>
-
+ OPTIONS:
+===
     -d, --destination <DESTINATION_PATH>
              The path to the location you want the data saved to.
 
@@ -33,15 +36,15 @@
              The path to the User directory you want to backup.
              [default: <CURRENT_WORKING_DIRECTORY>]
 
- <h2>Unimplemented:</h2>
-
+ Unimplemented:
+===
     -u, --update <update>
              If this flag is set, backr will check the metadata of the
              source file and the already existing destination
              file, and will keep the newest one.
              [default: false]
 
- <h2>TODO:</h2>
-
+ TODO:
+===
  1) Add a second thread with a progress bar
  2) Implement the update option
