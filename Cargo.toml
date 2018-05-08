@@ -1,0 +1,8 @@
+[package]
+name = "backr"
+version = "0.8.0"
+authors = ["martinak1 <martinak @ mymail.vcu .edu>"]
+
+[dependencies]
+clap = "2.31.2"
+regex = "1.0.0"
