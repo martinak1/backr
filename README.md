@@ -3,6 +3,7 @@
 [![Build Status](https://docs.rs/backr/badge.svg)]
  
  <h2>USAGE:</h2>
+
     $ backr [OPTIONS] --destination DESTINATION_PATH
 
 <h2>FLAGS:</h2>
