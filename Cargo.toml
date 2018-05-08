@@ -7,7 +7,7 @@ repository = "https://github.com/martinak1/backr"
 readme = "README.md"
 keywords = ["backup-utility", "regex", "clap"]
 categories = ["command-line-utility", "filesystem"]
-license = "BDS-3"
+license = "BDS-3-Clause"
 travis-ci = "martinak1/backr"
 
 
