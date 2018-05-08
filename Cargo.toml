@@ -10,7 +10,7 @@ categories = ["command-line-utility", "filesystem"]
 license = "BSD-3-Clause"
 
 [badges]
-travis-ci = "martinak1/backr"
+travis-ci = { repository = "martinak1/backr" }
 
 
 [dependencies]

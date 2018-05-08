@@ -1,5 +1,6 @@
  <h1>Backr - Backs up user data.</h1>
-
+[![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr)
+ 
  <h2>USAGE:</h2>
     $ backr [OPTIONS] --destination DESTINATION_PATH
 
