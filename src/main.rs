@@ -48,9 +48,6 @@
 extern crate clap;
 use clap::{App, Arg};
 
-// For tracking the resources in use
-extern crate self_meter;
-
 // for interacting with the filesystem
 use std::fs;
 use std::path::PathBuf;
