@@ -1,11 +1,12 @@
  <h1>Backr - Backs up user data.</h1>
 
  <h2>USAGE:</h2>
-    backr [OPTIONS] --destination <DESTINATION_PATH>
+    $ backr [OPTIONS] --destination DESTINATION_PATH
 
 <h2>FLAGS:</h2>
        -h, --help 
-             Prints help information
+             Prints help information 
+
        -V, --version 
              Prints version information
 
