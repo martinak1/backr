@@ -48,3 +48,6 @@ FLAGS:
 ===
  1) Add a second thread with a progress bar
  2) Implement the update option
+
+
+Note: When copying files from a Linux/Unix (ext4, apfs) filesystem to a Windows (ntfs) the program will report that sucessfull transfers failed. This is due to the way fs::copy is implemented. It first creates a copy of the files, then copies and set the permissions on the new file. Copying the permissions is the cause of your error. Your files will still be transfered, but the permissions will not. 
