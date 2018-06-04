@@ -2,6 +2,11 @@
  ===
 [![Crates.io](https://img.shields.io/crates/l/backr.svg)](https://crates.io/crates/backr) [![Crates.io](https://img.shields.io/crates/v/backr.svg)](https://crates.io/crates/backr) [![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr) [![Crates.io](https://img.shields.io/crates/d/backr.svg)](https://crates.io/crates/backr)
 
+Change Log: 0.3.0
+===
+
+    This a major rewrite of the previous version. This version is now 
+    multi-threaded and implements the update option.
 
  USAGE:
  ===
@@ -37,17 +42,12 @@ FLAGS:
              The path to the User directory you want to backup.
              [default: <CURRENT_WORKING_DIRECTORY>]
 
- Unimplemented:
-===
+    -t, --threads <NUM>
+             Number of threads that will be used to backup files 
+             [default: 2]
 
     -u, --update <update>
              If this flag is set, backr will check the metadata of the
              source file and the already existing destination
              file, and will keep the newest one.
              [default: false]
-
- TODO:
-===
-
-    1) Add a second thread with a progress bar
-    2) Implement the update option
