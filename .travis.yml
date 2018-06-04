@@ -1,3 +1,5 @@
 language: rust
-rust: stable
+rust: 
+  - stable
+  - nightly
 cache: cargo

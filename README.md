@@ -1,6 +1,6 @@
  Backr - Backs up user data.
  ===
-[![Crates.io](https://img.shields.io/crates/l/backr.svg)](https://crates.io/crates/backr) [![Crates.io](https://img.shields.io/crates/v/backr.svg)](https://crates.io/crates/backr) [![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr)
+[![Crates.io](https://img.shields.io/crates/l/backr.svg)](https://crates.io/crates/backr) [![Crates.io](https://img.shields.io/crates/v/backr.svg)](https://crates.io/crates/backr) [![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr) [![Crates.io](https://img.shields.io/crates/d/backr.svg)](https://crates.io/crates/backr)
 
 
  USAGE:
@@ -20,6 +20,7 @@ FLAGS:
 
  OPTIONS:
 ===
+
     -d, --destination <DESTINATION_PATH>
              The path to the location you want the data saved to.
 
@@ -32,12 +33,13 @@ FLAGS:
              and directories.
              [default: "Documents|Downloads|Movies|Music|Pictures|Videos"]
 
-    -s, --source <USER_PROFILE>
+    -s, --source <SOURCE_PATH>
              The path to the User directory you want to backup.
              [default: <CURRENT_WORKING_DIRECTORY>]
 
  Unimplemented:
 ===
+
     -u, --update <update>
              If this flag is set, backr will check the metadata of the
              source file and the already existing destination
@@ -46,5 +48,6 @@ FLAGS:
 
  TODO:
 ===
- 1) Add a second thread with a progress bar
- 2) Implement the update option
+
+    1) Add a second thread with a progress bar
+    2) Implement the update option

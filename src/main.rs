@@ -16,20 +16,20 @@
 //!    -d, --destination <DESTINATION_PATH>
 //!             The path to the location you want the data saved to.
 //!
-//!    -o, --output_file <output_file>
-//!             Specifies the location that failed transfer paths are written to
+//!    -l, --log <FILE_PATH>
+//!             Specifies the log location that errors are written to
 //!             [default: "<DESTINATION_PATH>/backr_log.txt"]
 //!
-//!    -r, --regex <regex>
+//!    -r, --regex <REGEX>
 //!             Passes a regex to the program to only backup matching files
 //!             and directories.
 //!             [default: "Documents|Downloads|Movies|Music|Pictures|Videos"]
 //!
-//!    -s, --source <USER_PROFILE>
+//!    -s, --source <SOURCE_PATH>
 //!             The path to the User directory you want to backup.
 //!             [default: <CURRENT_WORKING_DIRECTORY>]
 //!
-//! Unimplemented:
+//!    -t, --threads <NUM>
 //!
 //!    -u, --update <update>
 //!             If this flag is set, backr will check the metadata of the
@@ -38,75 +38,68 @@
 //!             [default: false]
 //! ```
 //!
-//! # TODO
-//! ```
-//! 1) Add a second thread with a progress bar
-//! 2) Implement the update option
-//! ```
+//!
+//!
+//! Note: When copying files from a Linux/Unix (ext4, apfs) filesystem to a
+//! Windows (ntfs) the program will report that sucessfull transfers failed.
+//! This is due to the way fs::copy is implemented. It first creates a copy of
+//! the files, then copies and set the permissions on the new file. Copying the
+//! permissions is the cause of your error. Your files will still be transfered,
+//! but the permissions will not.
+//#![feature(rustc_private)]
 
 // for cli partsing
 extern crate clap;
 use clap::{App, Arg};
 
 // for interacting with the filesystem
-use std::fs;
-use std::path::PathBuf;
 use std::env;
+use std::fs::{self, DirBuilder};
+use std::io::prelude::*;
+use std::path::PathBuf;
 
 // for filtering the files to be backedup
 extern crate regex;
 use regex::Regex;
 
+// for multi-threading
+use std::sync::mpsc;
+use std::thread;
+use std::time;
+
 #[derive(Debug)]
 /// Encapsulates information that is used throughout the program.
 /// This includes usefull stats and the source and destination paths.
 pub struct GlobalVars {
-    // Stats
-    /// The amount of files that have been moved
-    pub files_moved: i32,
-    /// The number of files that failed to transfer
-    pub files_failed: i32,
-
-    /// A list of paths to files that failed to transfer and the associated
-    /// error
-    pub failed_list: Vec<(PathBuf, std::io::Error)>,
-
-    /// The optional output file that failed_list is written to.
-    /// If it output_file is empty, then failed_list is instead written
-    /// to stdout
-    pub output_file: PathBuf,
-
     // Path info
     /// The path to the source
     pub source: PathBuf,
     /// The path to the destination
     pub destination: PathBuf,
 
+    /// If it output_file is empty, then failed_list is instead written
+    /// to DESTINATION/backr_log.txt
+    pub log: PathBuf,
+
     /// Regex specifying what files/folders should be ignored
     pub regex: Regex,
+
+    /// i32 representing the number of threads used for backingup files
+    pub threads: i32,
+
+    /// Flag that determines overwrite/update behavior
+    pub update: bool,
 }
 
 /// # Functions
 impl GlobalVars {
-    fn new(source: PathBuf, destination: PathBuf, pattern: &str) -> GlobalVars {
-        GlobalVars {
-            files_moved: 0,
-            files_failed: 0,
-            failed_list: Vec::new(),
-            output_file: PathBuf::new(),
-            source,
-            destination,
-            regex: Regex::new(pattern).unwrap(),
-        }
-    }
-
     /// Generates the GlobalVars struct from params captured by clap
     fn from(cli: &clap::ArgMatches) -> GlobalVars {
         // set the source path
         let source = PathBuf::from(cli.value_of("source").unwrap_or_default());
 
         // generate the dest path
-        let dest: PathBuf = match cli.value_of("destination") {
+        let destination: PathBuf = match cli.value_of("destination") {
             Some(path) => {
                 let mut path = PathBuf::from(path);
                 path.push(source.file_name().unwrap());
@@ -116,7 +109,7 @@ impl GlobalVars {
         };
         // add the root source file/folder name to the dest
 
-        let output_file = match cli.value_of("output_file") {
+        let log = match cli.value_of("log") {
             Some(path) => PathBuf::from(path),
             _ => PathBuf::new(),
         };
@@ -124,20 +117,24 @@ impl GlobalVars {
         let regex: &str =
             &format_args!(r"{}", cli.value_of("regex").unwrap_or_default()).to_string();
 
+        let threads: i32 = cli.value_of("threads").unwrap().parse::<i32>().unwrap();
+
+        let update: bool = cli.value_of("update").unwrap().parse::<bool>().unwrap();
+
         // create the new struct that will hold data
-        let mut gvars = GlobalVars::new(source, dest, regex);
-        gvars.set_of(output_file);
-        gvars
+        GlobalVars {
+            source,
+            destination,
+            log,
+            regex: Regex::new(regex).unwrap(),
+            threads,
+            update,
+        }
     }
 }
 
 /// # Methods
 impl GlobalVars {
-    /// Add failed paths to the failed_list
-    pub fn append(&mut self, paths: &mut Vec<(PathBuf, std::io::Error)>) {
-        self.failed_list.append(paths);
-    }
-
     /// Returns the source path
     pub fn get_source(&self) -> &PathBuf {
         &self.source
@@ -149,8 +146,8 @@ impl GlobalVars {
     }
 
     /// Returns the output_file path
-    pub fn get_of(&self) -> &PathBuf {
-        &self.output_file
+    pub fn get_log(&self) -> &PathBuf {
+        &self.log
     }
 
     /// Returns the regex for filtering
@@ -158,77 +155,21 @@ impl GlobalVars {
         &self.regex
     }
 
-    /// Writes the failed paths to a file if an output_file is set
-    /// or prints them to stdout
-    // TODO FIx hangle_failed_files, it does not write to file successfully
-    pub fn handle_failed_files(&self) {
-        use std::io::prelude::*;
-        use std::fs::File;
-
-        match File::create(self.get_of()) {
-            Ok(mut of) => for file_path in self.failed_list.iter() {
-                of.write_fmt(format_args!("{}\n{}", file_path.0.display(), file_path.1))
-                    .unwrap()
-            },
-            _ => {
-                println!(
-                    "Error: Failed to create log file. \
-                     \n Failed transfers will instead be printed to stdout."
-                );
-                for i in self.failed_list.iter() {
-                    println!("\t{:?}", i);
-                }
-            }
-        }
+    pub fn get_threads(&self) -> i32 {
+        self.threads
     }
+}
 
-    /// Increments the number of files successfully backedup
-    pub fn add_moved(&mut self, fc: i32) {
-        self.files_moved += fc
-    }
-
-    /// Increments the number of files that failed to transfer
-    pub fn get_failed_count(&self) -> usize {
-        self.failed_list.len()
-    }
-
-    /// Checks if a path matches the desired regex
-    pub fn is_match(&self, path: &str) -> bool {
-        // Makes it so the regex is only compiled once
-        self.get_regex().is_match(path)
-    }
-
+impl GlobalVars {
     /// Sets the output_file
-    pub fn set_of(&mut self, of: PathBuf) {
-        if of == PathBuf::from("") {
+    pub fn set_of(&mut self, log: PathBuf) {
+        if log == PathBuf::from("") {
             let mut path = self.destination.clone();
             path.push("backr_log.txt");
-            self.output_file = path;
+            self.log = path;
         } else {
-            self.output_file = of;
+            self.log = log;
         }
-    }
-
-    pub fn summarize(&self) {
-        println!(
-            "\n\nSummary: \
-             \n-------------------------------------------------------- \
-             \n\tSource: {} \
-             \n\tDestination: {} \
-             \n\tSuccessfull Transfers: {} \
-             \n\tFailed Transfers: {} \
-             \n\tLog File: {}",
-            self.source.display(),
-            self.destination.display(),
-            self.files_moved,
-            self.get_failed_count(),
-            self.output_file.display()
-        );
-    }
-
-    /// Returns the total number of files processed
-    pub fn total_files(&self) -> i32 {
-        self.get_failed_count() as i32 + self.files_moved
     }
 }
 
@@ -242,14 +183,14 @@ fn main() {
     let cwd = cwd.to_str().unwrap();
 
     let cli = App::new("Backr")
-        .version("0.1")
+        .version("0.2.2")
         .author("AM <martinak@mymail.vcu.edu>")
         .about("Backs up user profile data.")
         .arg(
             Arg::with_name("source")
                 .short("s")
                 .long("source")
-                .value_name("USER_PROFILE")
+                .value_name("SOURCE_PATH")
                 .help("The path to the User directory you want to backup.")
                 .takes_value(true)
                 .default_value(cwd),
@@ -280,11 +221,12 @@ fn main() {
                 .default_value("false"),
         )
         .arg(
-            Arg::with_name("output_file")
-                .short("o")
-                .long("output_file")
+            Arg::with_name("log_file")
+                .short("l")
+                .long("log")
+                .value_name("FILE_PATH")
                 .help(
-                    "Specifies the location that failed transfer paths are \
+                    "Specifies the log location that errors are \
                      written to",
                 )
                 .takes_value(true)
@@ -294,6 +236,7 @@ fn main() {
             Arg::with_name("regex")
                 .short("r")
                 .long("regex")
+                .value_name("REGEX")
                 .help(
                     "Passes a regex to the program to \
                      only backup matching files and directories.",
@@ -301,9 +244,17 @@ fn main() {
                 .takes_value(true)
                 .default_value("Documents|Downloads|Movies|Music|Pictures|Videos"),
         )
+        .arg(
+            Arg::with_name("threads")
+                .short("t")
+                .long("threads")
+                .value_name("NUM")
+                .help("Number of threads that will be used to backup files")
+                .default_value("2"),
+        )
         .get_matches();
 
-    let mut gvars = GlobalVars::from(&cli);
+    let gvars = GlobalVars::from(&cli);
 
     println!(
         "** {:?} is being used as the source directory",
@@ -316,147 +267,201 @@ fn main() {
 
     // Create the destination if it does not exist and begin walking through
     // the directories recursively
-    create_dest(&gvars);
+    //create_dest(&gvars);
     //let (mut failed_paths, total_file_count) = walk(gvars.get_source(), gvars.get_dest());
 
-    let (mut failed_paths, total_file_count) =
-        walk(gvars.get_source(), gvars.get_dest(), gvars.get_regex());
-    // Update stats and output, then handle them
-    gvars.append(&mut failed_paths);
-    gvars.add_moved(total_file_count);
-    gvars.handle_failed_files();
-    gvars.summarize();
+    // get the job queue and read errors
+    println!("** Searching for files to backup...");
+    let (queue, mut errors, ..) = walk(
+        Vec::<(PathBuf, PathBuf)>::new(),
+        Vec::<String>::new(),
+        &gvars.source,
+        &gvars.destination,
+        &gvars.regex,
+        gvars.update,
+    );
+
+    // Collect the read errors
+    println!(
+        "** Found {} files to backup and {} read errors. \n** Starting backup",
+        queue.len(),
+        errors.len()
+    );
+
+    let queue_len = &queue.len();
+
+    // collect the write errors
+    errors.extend(backup(queue, gvars.get_threads()).into_iter());
+
+    // Summarize
+    println!("** Files Backed Up: {}", queue_len - errors.len());
+    println!("** Total errors {}", errors.len());
+
+    // write log if needed
+    write_log(errors, gvars.get_log());
 }
 
-/// Creates the backup destination folder if it does not already exist
-fn create_dest(gvars: &GlobalVars) {
-    if !gvars.get_dest().is_dir() {
-        println!(
-            "** Creating root destination dir at {}",
-            gvars.get_dest().display()
-        );
-        match fs::create_dir_all(gvars.get_dest()) {
-            Ok(_) => println!("** Root destination folder created"),
-            Err(error) => panic!(
-                "\nERROR: Failed to create the root destination folder. \
-                 Run backr again with elevated privleges\n {}",
-                error
-            ),
-        }
-    }
-}
+fn backup(queue: Vec<(PathBuf, PathBuf)>, max: i32) -> Vec<String> {
+    // returned to main
+    let mut errors: Vec<String> = vec![];
 
-/// # Functions
-/// Recursivly itterates over files and directories backing them up
-fn walk(source: &PathBuf, dest: &PathBuf, regex: &Regex) -> (Vec<(PathBuf, std::io::Error)>, i32) {
-    let mut failed_list: Vec<(PathBuf, std::io::Error)> = Vec::new();
-    let itter = match fs::read_dir(source) {
-        Ok(itter) => itter,
-        Err(error) => {
-            println!(
-                "\nERROR: Failed to read {}. SKIPPING! \
-                 \nTry running backr again as root if you want this to be copied.\
-                 \n{}",
-                source.display(),
-                error
-            );
-            failed_list.push((source.clone(), error));
-            return (failed_list, 0);
-        }
-    };
-    let mut file_count: i32 = 0;
-    for entry in itter {
-        let path = entry.unwrap().path();
+    // for error communication
+    let (err_send, err_recv): (mpsc::Sender<String>, mpsc::Receiver<String>) = mpsc::channel();
 
-        // Copy if it matches the regex and is not a symlink
-        if regex.is_match(path.clone().into_os_string().to_str().unwrap())
-            && !fs::symlink_metadata(&path)
-                .unwrap()
-                .file_type()
-                .is_symlink()
-        {
-            //let tmp_dest = PathBuff::new(dest).join(path.file_name());
-            let mut tmp_dest: PathBuf = PathBuf::from(&dest);
-            //tmp_dest.push(&path.file_name().unwrap().to_os_string());
-            tmp_dest.push(&path.file_name().unwrap());
+    // for thread communication and handeling
+    let mut channels: Vec<mpsc::Sender<Option<(PathBuf, PathBuf)>>> = vec![];
+    let mut handels = vec![];
 
-            // TODO add a flag for update vs skip
-            if path.is_file() && !tmp_dest.exists() {
-                // TODO Add a section to check for verbosity
-                println!("** {:?} -> {:?}", path, tmp_dest);
-                // TODO add error handeling
-                match fs::copy(&path, &tmp_dest) {
-                    Err(error) => {
-                        failed_list.push((path, error));
+    // create threads
+    for i in 0..max {
+        // create a copy of the send channel for the thread
+        let child_err_send = err_send.clone();
+
+        // create the channel to send and recieve jobs
+        let (send_path, recv_path): (
+            mpsc::Sender<Option<(PathBuf, PathBuf)>>,
+            mpsc::Receiver<Option<(PathBuf, PathBuf)>>,
+        ) = mpsc::channel();
+
+        // create the thread and handel
+        let mut handel = thread::spawn(move || 'main: loop {
+            match recv_path.try_recv() {
+                Ok(option) => match option {
+                    Some((src, dest)) => {
+                        let dest_prnt = dest.parent().unwrap();
+                        if !dest_prnt.is_dir() {
+                            DirBuilder::new().recursive(true).create(dest_prnt).unwrap();
+                        }
+
+                        match fs::copy(&src, &dest) {
+                            Ok(_) => (),
+                            Err(error) => {
+                                println!("Thread {}: ERROR: {}", i, error);
+                                child_err_send
+                                    .send(format!("Thread {}: {}", i, error))
+                                    .unwrap();
+                            }
+                        }
                     }
-                    Ok(_) => {
-                        file_count += 1;
-                        ()
-                    }
-                }
-            } else if path.is_dir() {
-                // TODO add error handeling
-                if !tmp_dest.exists() {
-                    fs::create_dir(&tmp_dest).unwrap();
-                }
-                //failed_list.append(walk(&path, &tmp_dest).as_mut());
-                let (mut fl, fc) = walk(&path, &tmp_dest, &regex);
-                file_count += fc;
-                failed_list.append(&mut fl);
+                    None => break 'main,
+                },
+                Err(_) => thread::sleep(time::Duration::from_secs(2)),
             }
-        }
+        });
+
+        // push( thread #, send channel, thread handel)
+        channels.push(send_path);
+        handels.push(handel);
     }
-    (failed_list, file_count)
+
+    // iter the queue till you reach the end sending jobs to the threads
+    let mut queue_iter = queue.into_iter();
+    // cycling iter for job distribution to the threads
+    let channels_iter = channels.clone();
+    let mut channels_iter = channels_iter.iter().cycle();
+
+    while let Some(job) = queue_iter.next() {
+        let job_chnl = channels_iter.next().unwrap();
+        job_chnl.send(Some(job)).unwrap();
+    }
+
+    // Send a None to the threads to break them from their loops
+    channels.into_iter().for_each(|channel| {
+        channel.send(None).unwrap();
+    });
+
+    // join the threads
+    handels.into_iter().for_each(|handel| {
+        handel.join().unwrap();
+    });
+    println!("** All threads rejoined");
+
+    // collect errors
+    errors.extend(err_recv.try_recv().into_iter());
+    errors
 }
 
-/* fn demo_walk(
+fn walk(
+    mut queue: Vec<(PathBuf, PathBuf)>,
+    mut errors: Vec<String>,
     source: &PathBuf,
     dest: &PathBuf,
     regex: &Regex,
-) -> (Vec<(PathBuf, std::io::Error)>, i32) {
-    let mut failed_list: Vec<(PathBuf, std::io::Error)> = Vec::new();
-
-    let itter = match fs::read_dir(source) {
-        Ok(itter) => itter,
+    update: bool,
+) -> (Vec<(PathBuf, PathBuf)>, Vec<(String)>) {
+    // Verify the source dir
+    //println!("** Reading dir {:?}", &source);
+    let iter = match fs::read_dir(&source) {
+        Ok(iter) => iter,
         Err(error) => {
-            println!(
-                "\nERROR: Failed to read {}. SKIPPING! \
-                 \nTry running backr again as root if you want this to be copied.\
-                 \n{}",
-                source.display(),
-                error
-            );
-            failed_list.push((source.clone(), error));
-            return (failed_list, 0);
+            errors.push(format!("Failed to read {:?}.\n{}", &source, &error));
+            return (queue, errors);
         }
     };
-    let mut file_count: i32 = 0;
-    for entry in itter {
-        let path = entry.unwrap().path();
 
-        if regex.is_match(path.clone().into_os_string().to_str().unwrap()) {
-            //let tmp_dest = PathBuff::new(dest).join(path.file_name());
+    for path in iter {
+        let src = path.unwrap().path();
+
+        // if it matches the regex and is not a symlink
+        if regex.is_match(src.clone().to_str().unwrap())
+        //&& !src.symlink_metadata().unwrap().file_type().is_symlink() // is this redundant?
+        {
             let mut tmp_dest: PathBuf = PathBuf::from(&dest);
-            //tmp_dest.push(&path.file_name().unwrap().to_os_string());
-            tmp_dest.push(&path.file_name().unwrap());
+            tmp_dest.push(src.file_name().unwrap());
 
-            // TODO add a flag for update vs skip
-            if path.is_file() && !tmp_dest.exists() {
-                // TODO Add a section to check for verbosity
-                println!("** {:?} -> {:?}", path, tmp_dest);
-            // TODO add error handeling
-            } else if path.is_dir() {
-                // TODO add error handeling
-                if !tmp_dest.exists() {
-                    fs::create_dir(&tmp_dest).unwrap();
+            // if src is a file
+            if src.is_file() {
+                match update {
+                    // update flag is set
+                    true => {
+                        // If the existing destination file is newer than the source file, ignore it and continue looping
+                        if tmp_dest.exists()
+                            && (src.metadata().unwrap().modified().unwrap()
+                                < tmp_dest.metadata().unwrap().modified().unwrap())
+                        {
+                            continue;
+                        } else {
+                            queue.push((src, tmp_dest));
+                        }
+                    }
+                    false => {
+                        queue.push((src, tmp_dest));
+                        continue;
+                    }
                 }
-                //failed_list.append(walk(&path, &tmp_dest).as_mut());
-                let (mut fl, fc) = demo_walk(&path, &tmp_dest, &regex);
-                file_count += fc;
-                failed_list.append(&mut fl);
+            // if src is a dir
+            } else if src.is_dir() {
+                let (child_queue, child_errors) =
+                    walk(vec![], vec![], &src, &tmp_dest, regex, update);
+
+                queue.extend(child_queue.into_iter());
+
+                errors.extend(child_errors.into_iter());
             }
         }
     }
-    (failed_list, file_count)
+    (queue, errors)
 }
- */
+
+fn write_log(errors: Vec<String>, log: &PathBuf) {
+    if errors.is_empty() {
+        println!("** There are no errors to report, so creating a log will be skipped");
+        return ();
+    }
+
+    match fs::File::create(log) {
+        Ok(mut file) => {
+            println!("** Writing log to {:?}", log);
+            for error in errors {
+                file.write_fmt(format_args!("{}", error)).unwrap();
+            }
+        }
+        Err(error) => {
+            println!("ERROR: Failed to create log file \n{}", error);
+            println!("** Dumping errors to stdout\n");
+            for error in errors {
+                println!("{}", error);
+            }
+        }
+    }
+}

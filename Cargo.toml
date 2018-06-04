@@ -5,8 +5,8 @@ authors = ["martinak1 <martinak @ mymail.vcu .edu>"]
 description = "A program that backs up user data that matches a regular expression"
 repository = "https://github.com/martinak1/backr"
 readme = "README.md"
-keywords = ["backup-utility", "regex", "clap"]
-categories = ["command-line-utility", "filesystem"]
+keywords = ["backup-utility", "regex", "clap", "cross-platform"]
+categories = ["command-line-utilities", "filesystem"]
 license = "BSD-3-Clause"
 
 [badges]
