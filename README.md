@@ -1,30 +1,46 @@
- Backr - Backs up user data.
- ===
+
+Backr - Backs up user data
+===
+
 [![Crates.io](https://img.shields.io/crates/l/backr.svg)](https://crates.io/crates/backr) [![Crates.io](https://img.shields.io/crates/v/backr.svg)](https://crates.io/crates/backr) [![Build Status](https://travis-ci.org/martinak1/backr.svg?branch=master)](https://travis-ci.org/martinak1/backr) [![Crates.io](https://img.shields.io/crates/d/backr.svg)](https://crates.io/crates/backr)
 
+Change Log: 0.4.0
+---
+
+    Updated backrs documentation
+    Implemented a progress bar
+    Implemented an 'all' option to back up everything
+
 Change Log: 0.3.0
-===
+---
 
     This a major rewrite of the previous version. This version is now 
     multi-threaded and implements the update option.
 
- USAGE:
- ===
+USAGE
+---
 
     $ backr [OPTIONS] --destination DESTINATION_PATH
 
-FLAGS:
-===
+FLAGS
+---
+
+       -a, --backup-all
+             Backup all files found, overriding the regex. Because of this, it conflicts with the 
+             regex option.
 
        -h, --help 
              Prints help information 
+
+       -p, --progress
+             Displays a progress bar during the backup.
 
        -V, --version 
              Prints version information
 
 
- OPTIONS:
-===
+OPTIONS
+---
 
     -d, --destination <DESTINATION_PATH>
              The path to the location you want the data saved to.

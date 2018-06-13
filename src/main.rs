@@ -1,51 +1,54 @@
 //! Backs up user profile data.
 //! ```
 //! USAGE:
-//!    backr [OPTIONS] --destination <DESTINATION_PATH>
+//!     backr [FLAGS] [OPTIONS] --destination <DESTINATION_PATH>
 //!
-//!FLAGS:
-//!    -h, --help
-//!             Prints help information
+//! FLAGS:
+//!     -a, --backup-all
+//!         Backup all files found, overriding the regex. Because of this, it conflicts with the regex option.
 //!
-//!    -V, --version
-//!             Prints version information
+//!     -h, --help
+//!         Prints help information
 //!
+//!     -p, --progress
+//!         Displays a progress bar during the backup.
+//!
+//!     -V, --version
+//!         Prints version information
 //!
 //! OPTIONS:
+//!     -d, --destination <DESTINATION_PATH>
+//!         The path to the location you want the data saved too.
 //!
-//!    -d, --destination <DESTINATION_PATH>
-//!             The path to the location you want the data saved to.
+//!     -l, --log <FILE_PATH>
+//!         Specifies the log location that errors are written to [default: ]
 //!
-//!    -l, --log <FILE_PATH>
-//!             Specifies the log location that errors are written to
-//!             [default: "<DESTINATION_PATH>/backr_log.txt"]
+//!     -r, --regex <REGEX>
+//!         Passes a regex to the program to only backup matching files and
+//!         directories.
+//!         [default:Documents|Downloads|Movies|Music|Pictures|Videos]
 //!
-//!    -r, --regex <REGEX>
-//!             Passes a regex to the program to only backup matching files
-//!             and directories.
-//!             [default: "Documents|Downloads|Movies|Music|Pictures|Videos"]
+//!     -s, --source <SOURCE_PATH>
+//!         The path to the User directory you want to backup. [default: ./]
 //!
-//!    -s, --source <SOURCE_PATH>
-//!             The path to the User directory you want to backup.
-//!             [default: <CURRENT_WORKING_DIRECTORY>]
+//!     -t, --threads <NUM>
+//!         Number of threads that will be used to backup files [default: 2]
 //!
-//!    -t, --threads <NUM>
-//!
-//!    -u, --update <update>
-//!             If this flag is set, backr will check the metadata of the
-//!             source file and the already existing destination
-//!             file, and will keep the newest one.
-//!             [default: false]
+//!     -u, --update <update>
+//!         If this flag is set, backr will check the metadata of the source
+//!         file and the already existing destination file, and will keep the
+//!         newest one. [default: false]
 //! ```
 //!
 //!
 //!
-//! Note: When copying files from a Linux/Unix (ext4, apfs) filesystem to a
-//! Windows (ntfs) the program will report that sucessfull transfers failed.
-//! This is due to the way fs::copy is implemented. It first creates a copy of
-//! the files, then copies and set the permissions on the new file. Copying the
-//! permissions is the cause of your error. Your files will still be transfered,
-//! but the permissions will not.
+//! Note: When copying files from a Linux/Unix (ext4, apfs, etc.) filesystem
+//! to a Windows (ntfs) the program will report that sucessfull transfers
+//! failed.This is due to the way fs::copy is implemented. It first creates a
+//! copy of the files, then copies and set the permissions on the new file.
+//! Copying the permissions is the cause of your error. Your files will still
+//! be transfered, but the permissions will not.
+
 //#![feature(rustc_private)]
 
 // for cli partsing
@@ -53,7 +56,6 @@ extern crate clap;
 use clap::{App, Arg};
 
 // for interacting with the filesystem
-use std::env;
 use std::fs::{self, DirBuilder};
 use std::io::prelude::*;
 use std::path::PathBuf;
@@ -66,6 +68,10 @@ use regex::Regex;
 use std::sync::mpsc;
 use std::thread;
 use std::time;
+
+// for progress bar
+extern crate progress;
+use progress::*;
 
 #[derive(Debug)]
 /// Encapsulates information that is used throughout the program.
@@ -89,6 +95,9 @@ pub struct GlobalVars {
 
     /// Flag that determines overwrite/update behavior
     pub update: bool,
+
+    /// Flag that determines if a progress bar is drawn or not
+    pub bar: bool,
 }
 
 /// # Functions
@@ -114,10 +123,19 @@ impl GlobalVars {
             _ => PathBuf::new(),
         };
 
-        let regex: &str =
-            &format_args!(r"{}", cli.value_of("regex").unwrap_or_default()).to_string();
+        //let regex: &str =
+        //&format_args!(r"{}", cli.value_of("regex").unwrap_or_default()).to_string();
 
-        let threads: i32 = cli.value_of("threads").unwrap().parse::<i32>().unwrap();
+        let regex = match cli.is_present("all") {
+            true => r#"\\*"#,
+            false => cli.value_of("regex").unwrap_or_default(),
+        };
+
+        let threads: i32 = cli
+            .value_of("threads")
+            .unwrap_or_default()
+            .parse::<i32>()
+            .unwrap();
 
         let update: bool = cli.value_of("update").unwrap().parse::<bool>().unwrap();
 
@@ -129,6 +147,7 @@ impl GlobalVars {
             regex: Regex::new(regex).unwrap(),
             threads,
             update,
+            bar: cli.is_present("progress"),
         }
     }
 }
@@ -155,8 +174,14 @@ impl GlobalVars {
         &self.regex
     }
 
+    /// Returns the number of threads to use when backing up data
     pub fn get_threads(&self) -> i32 {
         self.threads
+    }
+
+    /// Returns a boolian saying if the progress bar should be drawn
+    pub fn draw_bar(&self) -> bool {
+        self.bar
     }
 }
 
@@ -174,18 +199,10 @@ impl GlobalVars {
 }
 
 fn main() {
-    /* TODO
-     * 1) Add a progress bar
-     */
-
-    // get the current working dir
-    let cwd = env::current_dir().unwrap();
-    let cwd = cwd.to_str().unwrap();
-
     let cli = App::new("Backr")
-        .version("0.2.2")
+        .version("0.4.0")
         .author("AM <martinak@mymail.vcu.edu>")
-        .about("Backs up user profile data.")
+        .about("Backs up user data.")
         .arg(
             Arg::with_name("source")
                 .short("s")
@@ -193,7 +210,7 @@ fn main() {
                 .value_name("SOURCE_PATH")
                 .help("The path to the User directory you want to backup.")
                 .takes_value(true)
-                .default_value(cwd),
+                .default_value("./"),
         )
         .arg(
             Arg::with_name("destination")
@@ -252,6 +269,22 @@ fn main() {
                 .help("Number of threads that will be used to backup files")
                 .default_value("2"),
         )
+        .arg(
+            Arg::with_name("all")
+                .short("a")
+                .long("backup-all")
+                .help(
+                    "Backup all files found, overriding the regex. Because \
+                     of this, it conflicts with the regex option.",
+                )
+                .conflicts_with("regex"),
+        )
+        .arg(
+            Arg::with_name("progress")
+                .short("p")
+                .long("progress")
+                .help("Displays a progress bar during the backup."),
+        )
         .get_matches();
 
     let gvars = GlobalVars::from(&cli);
@@ -283,7 +316,7 @@ fn main() {
 
     // Collect the read errors
     println!(
-        "** Found {} files to backup and {} read errors. \n** Starting backup",
+        "** Found {} files to backup and {} read errors.",
         queue.len(),
         errors.len()
     );
@@ -291,7 +324,7 @@ fn main() {
     let queue_len = &queue.len();
 
     // collect the write errors
-    errors.extend(backup(queue, gvars.get_threads()).into_iter());
+    errors.extend(backup(queue, gvars.get_threads(), gvars.draw_bar()).into_iter());
 
     // Summarize
     println!("** Files Backed Up: {}", queue_len - errors.len());
@@ -301,21 +334,31 @@ fn main() {
     write_log(errors, gvars.get_log());
 }
 
-fn backup(queue: Vec<(PathBuf, PathBuf)>, max: i32) -> Vec<String> {
+/// Backs up user data, by spawning the specified number of threads and
+/// creating a queue for each one. It will collect errors from the
+/// spawned threads and keeps track of the backups progress
+fn backup(queue: Vec<(PathBuf, PathBuf)>, threads: i32, progress: bool) -> Vec<String> {
+    println!("** Starting backup ");
     // returned to main
     let mut errors: Vec<String> = vec![];
+    // Keeps track of progress
+    let mut completed = 0;
+    let total = queue.len();
+    let mut bar = Bar::new();
+    bar.set_job_title("Backup");
 
     // for error communication
-    let (err_send, err_recv): (mpsc::Sender<String>, mpsc::Receiver<String>) = mpsc::channel();
+    let (err_send, err_recv): (mpsc::Sender<Option<String>>, mpsc::Receiver<Option<String>>) =
+        mpsc::channel();
 
     // for thread communication and handeling
     let mut channels: Vec<mpsc::Sender<Option<(PathBuf, PathBuf)>>> = vec![];
     let mut handels = vec![];
 
     // create threads
-    for i in 0..max {
+    for i in 0..threads {
         // create a copy of the send channel for the thread
-        let child_err_send = err_send.clone();
+        let child_send = err_send.clone();
 
         // create the channel to send and recieve jobs
         let (send_path, recv_path): (
@@ -334,12 +377,15 @@ fn backup(queue: Vec<(PathBuf, PathBuf)>, max: i32) -> Vec<String> {
                         }
 
                         match fs::copy(&src, &dest) {
-                            Ok(_) => (),
+                            Ok(_) => {
+                                child_send.send(None);
+                                ()
+                            }
                             Err(error) => {
-                                println!("Thread {}: ERROR: {}", i, error);
-                                child_err_send
-                                    .send(format!("Thread {}: {}", i, error))
-                                    .unwrap();
+                                let error = format!("Thread {}: {}", i, error);
+                                println!("{}", &error);
+                                child_send.send(Some(error));
+                                ()
                             }
                         }
                     }
@@ -360,6 +406,7 @@ fn backup(queue: Vec<(PathBuf, PathBuf)>, max: i32) -> Vec<String> {
     let channels_iter = channels.clone();
     let mut channels_iter = channels_iter.iter().cycle();
 
+    // send jobs to child threads
     while let Some(job) = queue_iter.next() {
         let job_chnl = channels_iter.next().unwrap();
         job_chnl.send(Some(job)).unwrap();
@@ -370,17 +417,36 @@ fn backup(queue: Vec<(PathBuf, PathBuf)>, max: i32) -> Vec<String> {
         channel.send(None).unwrap();
     });
 
+    // collect errors
+    while completed < total {
+        match err_recv.try_recv() {
+            Ok(Some(error)) => {
+                errors.push(error);
+                completed += 1;
+            }
+            Ok(None) => completed += 1,
+            Err(_) => thread::sleep(time::Duration::from_secs(2)),
+        }
+
+        // draw progress bar
+        if progress {
+            let perc = ((completed as f32 / total as f32) as f32 * 100.0) as i32;
+            bar.reach_percent(perc);
+        }
+    }
+
     // join the threads
     handels.into_iter().for_each(|handel| {
         handel.join().unwrap();
     });
     println!("** All threads rejoined");
 
-    // collect errors
-    errors.extend(err_recv.try_recv().into_iter());
+    //errors.extend(err_recv.try_recv().into_iter());
     errors
 }
 
+/// Iterates through the source directory and adds files that match a regex
+/// to a queue. It also collects read errors
 fn walk(
     mut queue: Vec<(PathBuf, PathBuf)>,
     mut errors: Vec<String>,
@@ -390,7 +456,6 @@ fn walk(
     update: bool,
 ) -> (Vec<(PathBuf, PathBuf)>, Vec<(String)>) {
     // Verify the source dir
-    //println!("** Reading dir {:?}", &source);
     let iter = match fs::read_dir(&source) {
         Ok(iter) => iter,
         Err(error) => {
@@ -403,9 +468,7 @@ fn walk(
         let src = path.unwrap().path();
 
         // if it matches the regex and is not a symlink
-        if regex.is_match(src.clone().to_str().unwrap())
-        //&& !src.symlink_metadata().unwrap().file_type().is_symlink() // is this redundant?
-        {
+        if regex.is_match(&src.to_str().unwrap()) {
             let mut tmp_dest: PathBuf = PathBuf::from(&dest);
             tmp_dest.push(src.file_name().unwrap());
 
@@ -443,6 +506,8 @@ fn walk(
     (queue, errors)
 }
 
+/// Writes all the read/write errors to a specified file. If there are no
+/// errors creating a log will be skipped
 fn write_log(errors: Vec<String>, log: &PathBuf) {
     if errors.is_empty() {
         println!("** There are no errors to report, so creating a log will be skipped");
