@@ -1,6 +1,6 @@
 [package]
 name = "backr"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["martinak1 <martinak @ mymail.vcu .edu>"]
 description = "A program that backs up user data that matches a regular expression"
 repository = "https://github.com/martinak1/backr"

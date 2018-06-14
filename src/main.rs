@@ -57,7 +57,7 @@ use clap::{App, Arg};
 
 // for interacting with the filesystem
 use std::fs::{self, DirBuilder};
-use std::io::prelude::*;
+use std::io::prelude::Write;
 use std::path::PathBuf;
 
 // for filtering the files to be backedup
@@ -65,13 +65,13 @@ extern crate regex;
 use regex::Regex;
 
 // for multi-threading
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time;
 
 // for progress bar
 extern crate progress;
-use progress::*;
+use progress::Bar;
 
 #[derive(Debug)]
 /// Encapsulates information that is used throughout the program.
@@ -339,99 +339,94 @@ fn main() {
 /// spawned threads and keeps track of the backups progress
 fn backup(queue: Vec<(PathBuf, PathBuf)>, threads: i32, progress: bool) -> Vec<String> {
     println!("** Starting backup ");
-    // returned to main
-    let mut errors: Vec<String> = vec![];
+
     // Keeps track of progress
-    let mut completed = 0;
     let total = queue.len();
-    let mut bar = Bar::new();
-    bar.set_job_title("Backup");
 
-    // for error communication
-    let (err_send, err_recv): (mpsc::Sender<Option<String>>, mpsc::Receiver<Option<String>>) =
-        mpsc::channel();
+    // returned to main
+    //let mut errors: Vec<String> = vec![];
 
-    // for thread communication and handeling
-    let mut channels: Vec<mpsc::Sender<Option<(PathBuf, PathBuf)>>> = vec![];
+    // to send to threads
+    let errors_mutex = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queue_mutex = Arc::new(Mutex::new(queue.into_iter()));
+    let completed_mutex = Arc::new(Mutex::new(0));
+
+    // to join threads
     let mut handels = vec![];
 
     // create threads
-    for i in 0..threads {
-        // create a copy of the send channel for the thread
-        let child_send = err_send.clone();
+    for _ in 0..threads {
+        let (queue, errors, completed) = (
+            queue_mutex.clone(),
+            errors_mutex.clone(),
+            completed_mutex.clone(),
+        );
 
-        // create the channel to send and recieve jobs
-        let (send_path, recv_path): (
-            mpsc::Sender<Option<(PathBuf, PathBuf)>>,
-            mpsc::Receiver<Option<(PathBuf, PathBuf)>>,
-        ) = mpsc::channel();
+        let handel = thread::spawn(move || {
+            // collect local errors
+            let mut local_errors = vec![];
 
-        // create the thread and handel
-        let mut handel = thread::spawn(move || 'main: loop {
-            match recv_path.try_recv() {
-                Ok(option) => match option {
+            'main: loop {
+                // capture the current values then release the mutex
+                let next = queue.lock().unwrap().next();
+
+                match next {
                     Some((src, dest)) => {
-                        let dest_prnt = dest.parent().unwrap();
-                        if !dest_prnt.is_dir() {
-                            DirBuilder::new().recursive(true).create(dest_prnt).unwrap();
+                        // create parent dir if not already existing
+                        if !dest.parent().unwrap().is_dir() {
+                            DirBuilder::new()
+                                .recursive(true)
+                                .create(dest.parent().unwrap())
+                                .unwrap();
                         }
 
+                        // copy the file
                         match fs::copy(&src, &dest) {
-                            Ok(_) => {
-                                child_send.send(None);
-                                ()
-                            }
+                            Ok(_) => (),
                             Err(error) => {
-                                let error = format!("Thread {}: {}", i, error);
                                 println!("{}", &error);
-                                child_send.send(Some(error));
-                                ()
+                                let mut _errors = errors.lock().unwrap();
+                                local_errors.push(format!(
+                                    "Error: Failed to copy {:?} -> {:?} \n \
+                                     {}",
+                                    src, dest, error
+                                ));
                             }
                         }
                     }
-                    None => break 'main,
-                },
-                Err(_) => thread::sleep(time::Duration::from_secs(2)),
+                    None => {
+                        break 'main;
+                    }
+                }
+                let mut completed = completed.lock().unwrap();
+                *completed += 1;
             }
+            // add all of the local errors to the programs error vec
+            // then die
+            errors.lock().unwrap().extend(local_errors.into_iter());
         });
 
-        // push( thread #, send channel, thread handel)
-        channels.push(send_path);
+        // collect the thread handels
         handels.push(handel);
     }
+    // draw progress bar
+    if progress {
+        // create progress bar
+        let mut bar = Bar::new();
+        bar.set_job_title("Backup");
 
-    // iter the queue till you reach the end sending jobs to the threads
-    let mut queue_iter = queue.into_iter();
-    // cycling iter for job distribution to the threads
-    let channels_iter = channels.clone();
-    let mut channels_iter = channels_iter.iter().cycle();
-
-    // send jobs to child threads
-    while let Some(job) = queue_iter.next() {
-        let job_chnl = channels_iter.next().unwrap();
-        job_chnl.send(Some(job)).unwrap();
-    }
-
-    // Send a None to the threads to break them from their loops
-    channels.into_iter().for_each(|channel| {
-        channel.send(None).unwrap();
-    });
-
-    // collect errors
-    while completed < total {
-        match err_recv.try_recv() {
-            Ok(Some(error)) => {
-                errors.push(error);
-                completed += 1;
-            }
-            Ok(None) => completed += 1,
-            Err(_) => thread::sleep(time::Duration::from_secs(2)),
-        }
-
-        // draw progress bar
-        if progress {
-            let perc = ((completed as f32 / total as f32) as f32 * 100.0) as i32;
+        // loop till percent >= 100
+        'bar: loop {
+            // get num completed then release the mutex
+            let cmplt = *completed_mutex.lock().unwrap();
+            let perc = ((cmplt as f32 / total as f32) * 100.0) as i32;
             bar.reach_percent(perc);
+
+            if perc >= 100 {
+                break 'bar;
+            }
+            // sleep so it doesn't interfere with the backup threads
+            thread::sleep(time::Duration::from_secs(5));
         }
     }
 
@@ -439,10 +434,11 @@ fn backup(queue: Vec<(PathBuf, PathBuf)>, threads: i32, progress: bool) -> Vec<S
     handels.into_iter().for_each(|handel| {
         handel.join().unwrap();
     });
-    println!("** All threads rejoined");
 
-    //errors.extend(err_recv.try_recv().into_iter());
-    errors
+    // unwrap the Arc leaving the mutex
+    let errors = Arc::try_unwrap(errors_mutex).unwrap();
+    // return the vector that the mutex is holding
+    errors.into_inner().unwrap()
 }
 
 /// Iterates through the source directory and adds files that match a regex
@@ -454,7 +450,7 @@ fn walk(
     dest: &PathBuf,
     regex: &Regex,
     update: bool,
-) -> (Vec<(PathBuf, PathBuf)>, Vec<(String)>) {
+) -> (Vec<(PathBuf, PathBuf)>, Vec<String>) {
     // Verify the source dir
     let iter = match fs::read_dir(&source) {
         Ok(iter) => iter,
