@@ -510,7 +510,7 @@ impl GlobalVars {
     fn build() -> GlobalVars {
         GlobalVars::from(
             &App::new("Backr")
-                .version("0.4.2")
+                .version("0.5.0")
                 .author("martinak1 <https://github.com/martinak1>")
                 .about("Backs up user data.")
                 .arg(

@@ -57,7 +57,6 @@
         Number of threads that will be used to backup files
         [default: 2]
 
-
 ## Goals
 
     * [ ] Make backup and walk functions concurrent
@@ -86,4 +85,4 @@
     Specs of test Machine:
         Cpu: i7-4770 @ 3.9GHz
         OS: Fedora 28 4.16.14-300.fc28.x86_64
-        Rust ver: rustc 1.26.2 (594fb253c 2018-06-01)       [default: false]
+        Rust ver: rustc 1.26.2 (594fb253c 2018-06-01)
