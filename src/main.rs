@@ -1,4 +1,4 @@
-//! Backs up user profile data.
+//! Backs up user data.
 //! ```
 //! USAGE:
 //!     backr [FLAGS] [OPTIONS] --destination <DESTINATION_PATH>
@@ -12,6 +12,11 @@
 //!
 //!     -p, --progress
 //!         Displays a progress bar during the backup.
+//!
+//!     -u, --update
+//!         If this flag is set, backr will check the metadata of the source
+//!         file and the already existing destination file, and will keep the
+//!         newest one.
 //!
 //!     -V, --version
 //!         Prints version information
@@ -33,11 +38,7 @@
 //!
 //!     -t, --threads <NUM>
 //!         Number of threads that will be used to backup files [default: 2]
-//!
-//!     -u, --update <update>
-//!         If this flag is set, backr will check the metadata of the source
-//!         file and the already existing destination file, and will keep the
-//!         newest one. [default: false]
+
 //! ```
 //!
 //!
