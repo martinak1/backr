@@ -1,25 +1,29 @@
-Change Log
-===
+# Change Log
 
-ver: 0.4.1
----
+## ver: 0.5.0
 
-    Simplified the backup function. It now passes Arc protected mutexs to the
-    spawned threads instead of populating thread local queues
+    * Implemented the -q --quite flag, to stop printing to stdout
+    * Added a function to check permissions before a backup is attempted
+    * Added a build function to GlobalVars, so the clap related code doen't 
+      clutter main
+    * Refactored the README
 
-    Created a simple benchmark chart for comparison w/ of backup utils
+## ver: 0.4.1
 
-    Moved the change log from the README to CHANGELOG (ie. this file)
+    * Simplified the backup function. It now passes Arc protected mutexs to the
+      spawned threads instead of populating thread local queues
 
-ver: 0.4.0
----
+    * Created a simple benchmark chart for comparison w/ of backup utils
 
-    Updated backrs documentation
-    Implemented a progress bar
-    Implemented an 'all' option to back up everything
+    * Moved the change log from the README to CHANGELOG (ie. this file)
 
-ver: 0.3.0
----
+## ver: 0.4.0
 
-    This a major rewrite of the previous version. This version is now
-    multi-threaded and implements the update option.
+    * Updated backrs documentation
+    * Implemented a progress bar
+    * Implemented an 'all' option to back up everything
+
+## ver: 0.3.0
+
+    * This a major rewrite of the previous version. This version is now
+    * multi-threaded and implements the update option.
