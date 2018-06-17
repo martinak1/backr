@@ -9,6 +9,9 @@
 //!
 //!     -h, --help
 //!         Prints help information
+//! 
+//!     -L, --force-log
+//!         Force a log to be written even if there are no errors to report
 //!
 //!     -p, --progress
 //!         Displays a progress bar during the backup.
@@ -38,13 +41,12 @@
 //!
 //!     -t, --threads <NUM>
 //!         Number of threads that will be used to backup files [default: 2]
-
 //! ```
 //!
 //!
 //!
 //! Note: When copying files from a Linux/Unix (ext4, apfs, etc.) filesystem
-//! to a Windows (ntfs) the program will report that sucessful transfers
+//! to a Windows (ntfs) the program will report that successful transfers
 //! failed.This is due to the way fs::copy is implemented. It first creates a
 //! copy of the files, then copies and set the permissions on the new file.
 //! Copying the permissions is the cause of your error. Your files will still
@@ -75,15 +77,15 @@ use progress::Bar;
 fn main() {
     let gvars = GlobalVars::build();
 
-    match check_permissions(gvars.get_source(), gvars.get_dest()) {
+    match check_permissions(gvars.source(), gvars.dest()) {
         true => {
             if gvars.quite() {
                 println!(
                     "** {:?} is being used as the source directory \
                      \n** {:?} is being used as the destination directory \
                      \n** Searching for files to backup...",
-                    gvars.get_source(),
-                    gvars.get_dest()
+                    gvars.source(),
+                    gvars.dest()
                 );
             }
 
@@ -91,10 +93,10 @@ fn main() {
             let (queue, mut errors, ..) = walk(
                 Vec::<(PathBuf, PathBuf)>::new(),
                 Vec::<String>::new(),
-                &gvars.source,
-                &gvars.destination,
-                &gvars.regex,
-                gvars.update,
+                gvars.source(),
+                gvars.dest(),
+                gvars.regex(),
+                gvars.update(),
             );
 
             // note the queues length
@@ -103,7 +105,7 @@ fn main() {
             // Collect the read errors
             if gvars.quite() {
                 println!(
-                    "** Found {} files to backup and {} read errors.",
+                    "** {} files to backup and {} read errors.",
                     queue_len,
                     errors.len()
                 );
@@ -111,7 +113,7 @@ fn main() {
 
             // backup files and collect the errors
             errors.extend(
-                backup(queue, gvars.get_threads(), gvars.draw_bar(), gvars.quite()).into_iter(),
+                backup(queue, gvars.threads(), gvars.bar(), gvars.quite()).into_iter(),
             );
 
             // Summarize
@@ -121,7 +123,7 @@ fn main() {
             }
 
             // write log if needed
-            write_log(errors, gvars.get_log(), gvars.quite());
+            write_log(&mut errors, gvars.log(), gvars.quite(), gvars.force_log());
         }
         false => (),
     }
@@ -262,7 +264,7 @@ fn check_permissions(src: &PathBuf, dest: &PathBuf) -> bool {
         // Dest exists try to create a file in it
         true => {
             let tmp_path = dest.join("CanIWriteHere?.txt");
-            match fs::write(&tmp_path, "Yes I can!") {
+            match fs::File::create(&tmp_path) {
                 Ok(_) => {
                     fs::remove_file(tmp_path).unwrap();
                     true
@@ -349,12 +351,19 @@ fn walk(
 
 /// Writes all the read/write errors to a specified file. If there are no
 /// errors creating a log will be skipped
-fn write_log(errors: Vec<String>, log: &PathBuf, quite: bool) {
+fn write_log(errors: &mut Vec<String>, log: &PathBuf, quite: bool, force_log: bool) {
     if errors.is_empty() {
-        if quite {
-            println!("** There are no errors to report, so creating a log will be skipped");
+        match force_log {
+            true => {
+                errors.push(String::from("** Backr completed without error"));
+            }
+            false => {
+                if quite {
+                    println!("** There are no errors to report, so creating a log will be skipped");
+                }
+                return ();
+            }
         }
-        return ();
     }
 
     match fs::File::create(log) {
@@ -406,43 +415,57 @@ pub struct GlobalVars {
 
     /// Flag that determines if anything is printed to stdout
     pub quite: bool,
+
+    /// Flag that forces a log to be written
+    pub force_log: bool,
 }
 
 /// # Methods
 impl GlobalVars {
     /// Returns the source path
-    pub fn get_source(&self) -> &PathBuf {
+    pub fn source(&self) -> &PathBuf {
         &self.source
     }
 
     /// Returns the destination path
-    pub fn get_dest(&self) -> &PathBuf {
+    pub fn dest(&self) -> &PathBuf {
         &self.destination
     }
 
     /// Returns the output_file path
-    pub fn get_log(&self) -> &PathBuf {
+    pub fn log(&self) -> &PathBuf {
         &self.log
     }
 
     /// Returns the regex for filtering
-    pub fn get_regex(&self) -> &Regex {
+    pub fn regex(&self) -> &Regex {
         &self.regex
     }
 
     /// Returns the number of threads to use when backing up data
-    pub fn get_threads(&self) -> i32 {
+    pub fn threads(&self) -> i32 {
         self.threads
     }
 
     /// Returns a bool saying if the progress bar should be drawn
-    pub fn draw_bar(&self) -> bool {
+    pub fn bar(&self) -> bool {
         self.bar
     }
 
     /// Returns a bool determining if backr prints to stdout
     pub fn quite(&self) -> bool {
         !self.quite
+    }
+
+    /// Returns a bool determining if backr forces a log file
+    pub fn force_log(&self) -> bool {
+        self.force_log
+    }
+
+    /// Returns a bool determining if the latest version of the file should be 
+    /// kept
+    pub fn update(&self) -> bool {
+        self.update
     }
 
     /// Sets the output_file
@@ -503,6 +526,7 @@ impl GlobalVars {
             update: cli.is_present("update"),
             bar: cli.is_present("progress"),
             quite: cli.is_present("quite"),
+            force_log: cli.is_present("force_log"),
         }
     }
 
@@ -536,12 +560,12 @@ impl GlobalVars {
                         .short("u")
                         .long("update")
                         .help(
-                            "Tells backer to update the files instead of \
+                            "Tells backer to update the files instead of\
                              overwriting them.",
                         )
                         .long_help(
-                            "If this flag is set, backr will check the \
-                             metadata of the source file and the already existing \
+                            "If this flag is set, backr will check the\
+                             metadata of the source file and the already existing\
                              destination file, and will keep the newest one.",
                         ),
                 )
@@ -551,7 +575,7 @@ impl GlobalVars {
                         .long("log")
                         .value_name("FILE_PATH")
                         .help(
-                            "Specifies the log location that errors are \
+                            "Specifies the log location that errors are\
                              written to",
                         )
                         .takes_value(true)
@@ -582,7 +606,7 @@ impl GlobalVars {
                         .short("a")
                         .long("backup-all")
                         .help(
-                            "Backup all files found, overriding the regex. Because \
+                            "Backup all files found, overriding the regex. Because\
                              of this, it conflicts with -r, --regex.",
                         )
                         .conflicts_with("regex"),
@@ -599,9 +623,18 @@ impl GlobalVars {
                         .long("quite")
                         .conflicts_with("progress")
                         .help(
-                            "Stop backr from printing to stdout. As such it \
-                             conflicts with -p, --progress",
-                        ),
+                            "Stop backr from printing to stdout. As such it\
+                             conflicts with -p, --progress"
+                        )
+                )
+                .arg(
+                    Arg::with_name("force_log")
+                        .short("L")
+                        .long("force-log")
+                        .help(
+                            "Forces a log to be written, even if there are no\
+                             errors to report."
+                        )
                 )
                 .get_matches(),
         )

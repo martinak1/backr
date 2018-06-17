@@ -1,19 +1,29 @@
 # Change Log
 
+## ver: 0.6.0 
+
+    * Implemented the -L, --force-log flag, to force write a log even if there
+      are no errors to report
+
+    * Unified the function call syntax for gvars
+
+    * removed the unstable `fs::write()` call from check_permissions. It now 
+      uses `fs::File::create()`
+
 ## ver: 0.5.0
 
     * Implemented the -q --quite flag, to stop printing to stdout
 
     * Added a function to check permissions before a backup is attempted
 
-    * Added a build function to GlobalVars, so the clap related code doen't 
+    * Added a build function to GlobalVars, so the clap related code doesn't 
       clutter main
 
     * Refactored the README
 
 ## ver: 0.4.1
 
-    * Simplified the backup function. It now passes Arc protected mutexs to the
+    * Simplified the backup function. It now passes Arc protected mutexes to the
       spawned threads instead of populating thread local queues
 
     * Created a simple benchmark chart for comparison w/ other backup utils
@@ -22,11 +32,11 @@
 
 ## ver: 0.4.0
 
-    * Updated backrs documentation
+    * Updated the backr documentation
 
     * Implemented a progress bar
 
-    * Implemented an 'all' option to back up everything
+    * Implemented the -a, -all option to back up everything
 
 ## ver: 0.3.0
 
