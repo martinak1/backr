@@ -10,6 +10,10 @@
     * removed the unstable `fs::write()` call from check_permissions. It now 
       uses `fs::File::create()`
 
+    * removed the benchmark from the README. It is not thorough enough and I do
+      not want the performance to be misleading. I will post more though benchmarks
+      when I can create a controlled environment.
+
 ## ver: 0.5.0
 
     * Implemented the -q --quite flag, to stop printing to stdout

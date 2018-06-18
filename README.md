@@ -66,23 +66,3 @@
     * [ ] Implement compression options
     * [ ] Implement incremental updates of compressed backups
     * [ ] Re-implement fs::copy so that it doesn't attempt to set permission bits
-
-## Benchmarks - Better benchmark coming soon
-
-    Command           Time (min)    GB/min
-    --------------------------------------
-    `cp -r`             33:50       ~1.21
-    `rsync -r`          32:15       ~1.27
-    `backr (0.2.2)      22:58       ~1.78
-    `backr -apt 3`      20:26       ~2
-    `backr -apt 7`      16:36       ~2.49
-
-    This test was conducted by using the `time` command to measure the run time
-    of each program as it copied 41GB of data from a remote location to a
-    remote destination. Take the results with a grain of salt as the test is
-    very simple and was performed in a very loosely controlled environment.
-
-    Specs of test Machine:
-        Cpu: i7-4770 @ 3.9GHz
-        OS: Fedora 28 4.16.14-300.fc28.x86_64
-        Rust ver: rustc 1.26.2 (594fb253c 2018-06-01)
