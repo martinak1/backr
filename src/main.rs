@@ -9,7 +9,7 @@
 //!
 //!     -h, --help
 //!         Prints help information
-//! 
+//!
 //!     -L, --force-log
 //!         Force a log to be written even if there are no errors to report
 //!
@@ -41,6 +41,9 @@
 //!
 //!     -t, --threads <NUM>
 //!         Number of threads that will be used to backup files [default: 2]
+//!
+//!     -L, --force-log
+//!         Writes a log, even if there are no errors to report
 //! ```
 //!
 //!
@@ -112,9 +115,7 @@ fn main() {
             }
 
             // backup files and collect the errors
-            errors.extend(
-                backup(queue, gvars.threads(), gvars.bar(), gvars.quite()).into_iter(),
-            );
+            errors.extend(backup(queue, gvars.threads(), gvars.bar(), gvars.quite()).into_iter());
 
             // Summarize
             if gvars.quite() {
@@ -132,6 +133,7 @@ fn main() {
 /// Backs up user data, by spawning the specified number of threads and
 /// creating a queue for each one. It will collect errors from the
 /// spawned threads and keeps track of the backup progress
+// TODO setup up an option return type for error handling
 fn backup(
     queue: Vec<(PathBuf, PathBuf)>,
     threads: i32,
@@ -266,7 +268,13 @@ fn check_permissions(src: &PathBuf, dest: &PathBuf) -> bool {
             let tmp_path = dest.join("CanIWriteHere?.txt");
             match fs::File::create(&tmp_path) {
                 Ok(_) => {
-                    fs::remove_file(tmp_path).unwrap();
+                    match fs::remove_file(tmp_path) {
+                        Ok(_) => (),
+                        Err(_) => {
+                            println!("Error: Failed to delete the test file. The program will continue, but verify the backup after completion.");
+                            ()
+                        }
+                    }
                     true
                 }
                 Err(error) => {
@@ -308,7 +316,15 @@ fn walk(
     };
 
     for path in iter {
-        let src = path.unwrap().path();
+        //let src = path.unwrap().path();
+
+        let src = match path {
+            Ok(path) => path.path(),
+            Err(err) => {
+                println!("Error: Failed to read a path. Skipping! \n{}", err);
+                continue;
+            }
+        };
 
         // if it matches the regex and is not a symlink
         if regex.is_match(&src.to_str().unwrap()) {
@@ -372,7 +388,13 @@ fn write_log(errors: &mut Vec<String>, log: &PathBuf, quite: bool, force_log: bo
                 println!("** Writing log to {:?}", log);
             }
             for error in errors {
-                file.write_fmt(format_args!("{}", error)).unwrap();
+                //file.write_fmt(format_args!("{}", error)).unwrap();
+                match file.write_fmt(format_args!("{}", error)) {
+                    Ok(_) => (),
+                    Err(_) => {
+                        println!("Error: {}", error);
+                    }
+                }
             }
         }
         Err(error) => {
@@ -462,7 +484,7 @@ impl GlobalVars {
         self.force_log
     }
 
-    /// Returns a bool determining if the latest version of the file should be 
+    /// Returns a bool determining if the latest version of the file should be
     /// kept
     pub fn update(&self) -> bool {
         self.update
@@ -483,6 +505,7 @@ impl GlobalVars {
 /// # Functions
 impl GlobalVars {
     /// Generates the GlobalVars struct from params captured by clap
+    // TODO SETUP return type a an option to remove unwraps
     fn from(cli: &clap::ArgMatches) -> GlobalVars {
         // set the source path
         let source = PathBuf::from(cli.value_of("source").unwrap_or_default());
@@ -545,8 +568,7 @@ impl GlobalVars {
                         .help("The path to the User directory you want to backup.")
                         .takes_value(true)
                         .default_value("./"),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("destination")
                         .short("d")
                         .long("destination")
@@ -554,22 +576,19 @@ impl GlobalVars {
                         .help("The path to the location you want the data saved too.")
                         .takes_value(true)
                         .required(true),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("update")
                         .short("u")
                         .long("update")
                         .help(
                             "Tells backer to update the files instead of\
                              overwriting them.",
-                        )
-                        .long_help(
+                        ).long_help(
                             "If this flag is set, backr will check the\
                              metadata of the source file and the already existing\
                              destination file, and will keep the newest one.",
                         ),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("log_file")
                         .short("l")
                         .long("log")
@@ -577,11 +596,9 @@ impl GlobalVars {
                         .help(
                             "Specifies the log location that errors are\
                              written to",
-                        )
-                        .takes_value(true)
+                        ).takes_value(true)
                         .default_value(""),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("regex")
                         .short("r")
                         .long("regex")
@@ -589,54 +606,46 @@ impl GlobalVars {
                         .help(
                             "Passes a regex to the program to \
                              only backup matching files and directories.",
-                        )
-                        .takes_value(true)
+                        ).takes_value(true)
                         .default_value("Documents|Downloads|Movies|Music|Pictures|Videos"),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("threads")
                         .short("t")
                         .long("threads")
                         .value_name("NUM")
                         .help("Number of threads that will be used to backup files")
                         .default_value("2"),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("all")
                         .short("a")
                         .long("backup-all")
                         .help(
                             "Backup all files found, overriding the regex. Because\
                              of this, it conflicts with -r, --regex.",
-                        )
-                        .conflicts_with("regex"),
-                )
-                .arg(
+                        ).conflicts_with("regex"),
+                ).arg(
                     Arg::with_name("progress")
                         .short("p")
                         .long("progress")
                         .help("Displays a progress bar during the backup."),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("quite")
                         .short("q")
                         .long("quite")
                         .conflicts_with("progress")
                         .help(
                             "Stop backr from printing to stdout. As such it\
-                             conflicts with -p, --progress"
-                        )
-                )
-                .arg(
+                             conflicts with -p, --progress",
+                        ),
+                ).arg(
                     Arg::with_name("force_log")
                         .short("L")
                         .long("force-log")
                         .help(
                             "Forces a log to be written, even if there are no\
-                             errors to report."
-                        )
-                )
-                .get_matches(),
+                             errors to report.",
+                        ),
+                ).get_matches(),
         )
     }
 }

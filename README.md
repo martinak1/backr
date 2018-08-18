@@ -29,12 +29,15 @@
         Displays a progress bar during the backup.
 
     -u, --update
-        If this flag is set, backr will check the metadata of the source 
+        If this flag is set, backr will check the metadata of the source
         file and the already existing destination file, and will keep
         the newest one.
 
     -V, --version
         Prints version information
+
+    -L, --force-log
+        Writes a log, even if there are no errors to report
 
 ## Options
 
@@ -62,7 +65,4 @@
     * [ ] Make backup and walk functions concurrent
     * [ ] Create better benchmarks
     * [ ] Remove as many unwraps as I can from the source
-    * [ ] Implement hash check options
-    * [ ] Implement compression options
-    * [ ] Implement incremental updates of compressed backups
     * [ ] Re-implement fs::copy so that it doesn't attempt to set permission bits

@@ -1,5 +1,11 @@
 # Change Log
 
+## ver: 0.6.1
+
+    * Removed some of the goals to avoid scope creep. It would be better to use this 
+      program in conjunction with other technologies that specialize in compression
+      and similar instead of implementing such features. KISS and all that.
+
 ## ver: 0.6.0 
 
     * Implemented the -L, --force-log flag, to force write a log even if there
