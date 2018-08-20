@@ -55,6 +55,11 @@
 //! Copying the permissions is the cause of your error. Your files will still
 //! be transferred, but the permissions will not.
 
+/* TODO
+    Add secure way to receive username + password from consol
+    Add support for sftp
+*/
+
 // for cli parsing
 extern crate clap;
 use clap::{App, Arg};
